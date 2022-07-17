@@ -2,26 +2,42 @@ const axios = require("axios");
 const dotenv = require("dotenv");
 const { Composer, Markup, Scenes, session, Telegraf } = require("telegraf");
 const fs = require("fs");
+const https = require("https"); // or 'https' for https:// URLs
 
 dotenv.config();
-
-// tg bot get chat id
-const getChatId = async (message) => {
-	const chatId = message.chat.id;
-	return chatId;
-};
 
 const TOKEN = process.env.BOT_TOKEN;
 (CHAT_ID = "2126810553"),
 	(BASE_URL = "api.telegram.org"),
 	(REQUEST_FREQUENCY = 5000);
 
-const postFile = async (filePath) => {
-	const formData = new FormData();
-	formData.append("content", fs.createReadStream(filePath));
-	const response = await axios.put(
-		"https://api.github.com/repos/rivertwilight/cargo-plane-bot/test/test_post.md"
-	);
+const postFile = async (filePath, fileName) => {
+	axios.get(filePath).then((res) => {
+		const base64 = Buffer.from(res.data, "binary").toString("base64");
+
+		axios({
+			url: "https://api.github.com/repos/rivertwilight/cargo-plane-bot/contents/test/test_post.md",
+			method: "PUT",
+			headers: {
+				Authorization: `token ${process.env.GITHUB_TOKEN}`,
+			},
+			data: {
+				content: base64,
+				message: `Add ${fileName} via Telegram`,
+				committer: {
+					name: "River Twilight",
+					email: "",
+				},
+			},
+		})
+			.then((res) => {
+				console.log(res.data.errors);
+			})
+			.catch((err) => {
+				console.log(err);
+			});
+	});
+
 	return response;
 };
 
@@ -59,9 +75,13 @@ githubScene.on("text", (ctx) => {
 	ctx.reply(`save ${githubScene.fileId} to ${ctx.message.text}`);
 	getFilePath(githubScene.fileId, (filePath) => {
 		console.log(filePath);
-		postFile(`https://${BASE_URL}/bot${TOKEN}/$${filePath}`, (res) => {
-			console.log(res);
-		});
+		postFile(
+			`https://${BASE_URL}/file/bot${TOKEN}/${filePath}`,
+			"test_post.md",
+			(res) => {
+				console.log(res);
+			}
+		);
 	});
 	// }
 });
