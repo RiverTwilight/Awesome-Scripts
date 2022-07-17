@@ -1,8 +1,6 @@
 const axios = require("axios");
 const dotenv = require("dotenv");
 const { Composer, Markup, Scenes, session, Telegraf } = require("telegraf");
-const fs = require("fs");
-const https = require("https"); // or 'https' for https:// URLs
 
 dotenv.config();
 
@@ -16,38 +14,40 @@ const postFile = async (filePath, fileName) => {
 		const base64 = Buffer.from(res.data, "binary").toString("base64");
 
 		axios({
-			url: "https://api.github.com/repos/rivertwilight/cargo-plane-bot/contents/test/test_post.md",
+			url: "https://api.github.com/repos/rivertwilight/cargo-plane-bot/contents/test/test_post_2.md",
 			method: "PUT",
 			headers: {
+				"Content-Type": "application/json",
 				Authorization: `token ${process.env.GITHUB_TOKEN}`,
 			},
-			data: {
+			data: JSON.stringify({
 				content: base64,
 				message: `Add ${fileName} via Telegram`,
 				committer: {
 					name: "River Twilight",
 					email: "",
 				},
-			},
+			}),
 		})
 			.then((res) => {
-				console.log(res.data.errors);
+				console.log(res.data);
 			})
 			.catch((err) => {
-				console.log(err);
+				console.log(err.response.data);
 			});
 	});
 
 	return response;
 };
 
-const getFilePath = (fileId, callback) => {
-	axios
+const getFilePath = async (fileId, callback) => {
+	const filePath = await axios
 		.get(`https://${BASE_URL}/bot${TOKEN}/getFile?file_id=${fileId}`)
 		.then((res) => {
-			callback(res.data.result.file_path);
+			return res.data.result.file_path;
 		})
 		.catch(console.log);
+	return filePath;
 };
 
 const keyboard = Markup.inlineKeyboard([
@@ -65,7 +65,7 @@ githubScene.fileId = "";
 githubScene.enter((ctx) => {});
 githubScene.leave((ctx) => ctx.reply("Bye"));
 // githubScene.on("help", enter("greeter"));
-githubScene.on("text", (ctx) => {
+githubScene.on("text", async (ctx) => {
 	// if (
 	// 	ctx.message &&
 	// 	!ctx.message.text.match(/[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+/i)
@@ -73,17 +73,15 @@ githubScene.on("text", (ctx) => {
 	// 	ctx.reply("Please enter a valid repo link");
 	// } else {
 	ctx.reply(`save ${githubScene.fileId} to ${ctx.message.text}`);
-	getFilePath(githubScene.fileId, (filePath) => {
-		console.log(filePath);
-		postFile(
-			`https://${BASE_URL}/file/bot${TOKEN}/${filePath}`,
-			"test_post.md",
-			(res) => {
-				console.log(res);
-			}
-		);
-	});
-	// }
+	postFile(
+		`https://${BASE_URL}/file/bot${TOKEN}/${getFilePath(
+			githubScene.fileId
+		)}`,
+		"test_post.md",
+		(res) => {
+			console.log(res);
+		}
+	);
 });
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
