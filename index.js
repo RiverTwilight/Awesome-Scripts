@@ -1,6 +1,7 @@
 const axios = require("axios");
 const dotenv = require("dotenv");
-const { Telegraf, Markup } = require("telegraf");
+const { Composer, Markup, Scenes, session, Telegraf } = require("telegraf");
+const fs = require("fs");
 
 dotenv.config();
 
@@ -10,20 +11,16 @@ const getChatId = async (message) => {
 	return chatId;
 };
 
-const TOKEN = process.env.TG_TOKEN;
+const TOKEN = process.env.BOT_TOKEN;
 (CHAT_ID = "2126810553"),
 	(BASE_URL = "api.telegram.org"),
 	(REQUEST_FREQUENCY = 5000);
 
 const postFile = async (filePath) => {
-	const chatId = await getChatId(message);
-	const url = `https://${BASE_URL}/bot${TOKEN}/sendDocument`;
 	const formData = new FormData();
-	formData.append("chat_id", chatId);
-	formData.append("document", fs.createReadStream(filePath));
-	const response = await axios.post(url, formData);
-	axios.put(
-		"https://api.github.com/repos/rivertwilight/{repo}/contents/{path}"
+	formData.append("content", fs.createReadStream(filePath));
+	const response = await axios.put(
+		"https://api.github.com/repos/rivertwilight/cargo-plane-bot/test/test_post.md"
 	);
 	return response;
 };
@@ -33,26 +30,8 @@ const getFilePath = (fileId, callback) => {
 		.get(`https://${BASE_URL}/bot${TOKEN}/getFile?file_id=${fileId}`)
 		.then((res) => {
 			callback(res.data.result.file_path);
-		});
-};
-
-const getUpdate = () => {
-	axios
-		.get(`https://${BASE_URL}/bot${TOKEN}/getUpdates`)
-		.then((res) => {
-			res.data.result.map(({ message }) => {
-				console.log(message);
-				if (message.document) {
-					getFilePath(message.document.file_id, (filePath) => {
-						console.log(filePath);
-						postFile(filePath);
-					});
-				}
-			});
 		})
-		.catch((err) => {
-			console.log(err);
-		});
+		.catch(console.log);
 };
 
 const keyboard = Markup.inlineKeyboard([
@@ -60,25 +39,61 @@ const keyboard = Markup.inlineKeyboard([
 	Markup.button.callback("Notion", "send_to_notion"),
 ]);
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+// Handler factories
+const { enter, leave } = Scenes.Stage;
 
-bot.start((ctx) => {
-	ctx.reply("Welcome to the bot!");
+// Greeter scene
+const githubScene = new Scenes.BaseScene("githubScene");
+githubScene.fileId = "";
+
+githubScene.enter((ctx) => {});
+githubScene.leave((ctx) => ctx.reply("Bye"));
+// githubScene.on("help", enter("greeter"));
+githubScene.on("text", (ctx) => {
+	// if (
+	// 	ctx.message &&
+	// 	!ctx.message.text.match(/[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+/i)
+	// ) {
+	// 	ctx.reply("Please enter a valid repo link");
+	// } else {
+	ctx.reply(`save ${githubScene.fileId} to ${ctx.message.text}`);
+	getFilePath(githubScene.fileId, (filePath) => {
+		console.log(filePath);
+		postFile(`https://${BASE_URL}/bot${TOKEN}/$${filePath}`, (res) => {
+			console.log(res);
+		});
+	});
+	// }
 });
 
-bot.help((ctx) => ctx.reply("Send me a sticker"));
+const bot = new Telegraf(process.env.BOT_TOKEN);
+
+const stage = new Scenes.Stage([githubScene], {
+	ttl: 10,
+});
+bot.use(session());
+bot.use(stage.middleware());
+bot.use((ctx, next) => {
+	// we now have access to the the fields defined above
+	ctx.fileId = "";
+	return next();
+});
 
 bot.on("document", (ctx) => {
+	githubScene.fileId = ctx.message.document.file_id;
 	ctx.reply("Where do you what to send to?", keyboard);
 });
 
 bot.action("send_to_github", (ctx) => {
+	ctx.scene.enter("githubScene");
+	ctx.replyWithMarkdownV2(
+		"Please send me the path you want to save to in this format: `<owner>/<repo>/<path>/<filename>`"
+	);
 	ctx.deleteMessage();
-	getFilePath(message.document.file_id, (filePath) => {
-		console.log(filePath);
-		postFile(filePath);
-	});
 });
 
-bot.hears("hi", (ctx) => ctx.reply("Hey there"));
 bot.launch();
+
+// Enable graceful stop
+// process.once("SIGINT", () => bot.stop("SIGINT"));
+// process.once("SIGTERM", () => bot.stop("SIGTERM"));
